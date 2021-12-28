@@ -14,6 +14,7 @@
 #define maxCards 10
 #define printSize 100
 #define inputSize 20
+#define maxSockets 100
 
 typedef struct {
     int rank;
@@ -34,7 +35,8 @@ char lostPrint[printSize] = "YOU LOST!\n\n";
 char choicePrint[printSize] = "Type HIT/STAND\n";
 char gameOverPrint[printSize] = "Thanks for the game!\n";
 
-int clientSocket = 0;
+int socketNumber = 0;
+int clientSocket[maxSockets];
 
 int cardCounter = 0;
 int playerCardCounter = 2;
@@ -47,13 +49,12 @@ int rankNames[maxRanks] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
 
 char suitNames[maxSuits][maxNameOfSuits] = {"Clubs", "Diamonds", "Hearts", "Spades"};
 
-
 void sendMessage(const char *message) {
-    write(clientSocket, message, strlen(message));
+    write(clientSocket[socketNumber], message, strlen(message));
 }
 
 void readMessage() {
-    read(clientSocket, userInput, inputSize);
+    read(clientSocket[socketNumber], userInput, inputSize);
 }
 
 void shuffle(CARD deck[]) {
@@ -78,7 +79,6 @@ void initializeDeck(CARD deck[]) {
 
 void displayCards(const CARD cards[]) {
     for (int i = 0; cards[i].rank != 0; i++) {
-
         if (cards[i].rank == 1) {
             sprintf(buffer, "Ace of %s \n", cards[i].suit);
             sendMessage(buffer);
@@ -102,10 +102,10 @@ void displayCards(const CARD cards[]) {
     }
 }
 
-
 int isBlackjack(const CARD cards[]) {
     bool ace = false;
     int score = 0;
+
     for (int i = 0; i < 2; i++) {
         if (cards[i].rank == 11 || cards[i].rank == 12 || cards[i].rank == 13) {
             score += 10;
@@ -145,12 +145,13 @@ int score(const CARD cards[]) {
     if (ace == true && result <= 10) {
         sprintf(buffer, "result cards is: %d or: %d\n\n", result, result + 10);
         sendMessage(buffer);
+        return result + 10;
 
     } else {
         sprintf(buffer, "result cards is: %d\n\n", result);
         sendMessage(buffer);
+        return result;
     }
-    return result;
 }
 
 void displayDealerFirst(const CARD dealerCards[]) {
@@ -185,7 +186,6 @@ void dealingCards(const CARD deck[], CARD dealerCards[], CARD playerCards[]) {
 
 
     for (int i = 0; i < 2; i++) {
-
         dealerCards[i].rank = deck[cardCounter].rank;
         strncpy(dealerCards[i].suit, deck[cardCounter].suit, maxNameOfSuits);
         cardCounter++;
@@ -221,7 +221,6 @@ void dealingCards(const CARD deck[], CARD dealerCards[], CARD playerCards[]) {
             endDrawDealerCards = true;
         } else {
             sendMessage(choicePrint);
-
             readMessage();
 
             if (strcmp(userInput, "HIT") == 0) {
@@ -229,7 +228,6 @@ void dealingCards(const CARD deck[], CARD dealerCards[], CARD playerCards[]) {
                 strncpy(playerCards[playerCardCounter].suit, deck[cardCounter].suit, maxNameOfSuits);
                 playerCardCounter++;
                 cardCounter++;
-
             } else {
                 endDrawPlayerCards = true;
             }
@@ -260,7 +258,6 @@ void dealingCards(const CARD deck[], CARD dealerCards[], CARD playerCards[]) {
 }
 
 void gameResult(const CARD dealerCards[], const CARD playerCards[]) {
-
     sendMessage(starsPrint);
     sendMessage(resultPrint);
 
@@ -295,10 +292,9 @@ void gameResult(const CARD dealerCards[], const CARD playerCards[]) {
     } else {
         sendMessage(lostPrint);
     }
-
 }
 
-void clean(CARD dealerCards[], CARD playerCards[]) {
+void cleanUp(CARD dealerCards[], CARD playerCards[]) {
 
     for (int i = 0; i <= maxCards; i++) {
         playerCards[i].rank = 0;
@@ -318,13 +314,13 @@ void game() {
     CARD playerCards[maxCards];
     CARD dealerCards[maxCards];
 
-    clean(playerCards, dealerCards);
+    cleanUp(playerCards, dealerCards);
     initializeDeck(deck);
     shuffle(deck);
     dealingCards(deck, dealerCards, playerCards);
     gameResult(dealerCards, playerCards);
     sendMessage(gameOverPrint);
-    close(clientSocket);
+    close(clientSocket[socketNumber]);
 }
 
 int main(void) {
@@ -350,15 +346,26 @@ int main(void) {
         return 1;
     }
 
+    int pid;
+
     printf("Waiting for incoming connections on: 127.0.0.1/4444\n");
-    while ((clientSocket = accept(mySocket, (struct sockaddr *) &client, &size)) > 0) {
+    while (1) {
 
-        printf("Player successful connected\n");
-        game();
+        clientSocket[socketNumber] = accept(mySocket, (struct sockaddr *) &client, &size);
 
+        printf("Player successfully connected\n");
 
+        if ((pid = fork()) == -1) {
+            continue;
+        } else if (pid > 0) {
+            close(clientSocket[socketNumber]);
+            continue;
+        } else if (pid == 0) {
+            game();
+            break;
+        }
+        socketNumber++;
     }
-
     return 0;
 }
 
